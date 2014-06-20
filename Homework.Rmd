@@ -1,0 +1,98 @@
+Coursera practical machine learning homework
+========================================================
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement ??? a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har).
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
+In the beginning lets load necessary packages and data from the internet.
+```{r}
+library(caret)
+if (!file.exists("pml-training.csv"))
+    download.file(
+        "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+        "pml-training.csv")
+if (!file.exists("pml-testing.csv"))
+    download.file(
+        "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+        "pml-testing.csv")
+d<-read.csv("pml-training.csv", head=T)
+testData<-read.csv("pml-testing.csv", head=T)
+dim(d);
+head(d$classe)
+```
+Classe is a discrete variable with 5 possible outputs. 
+Dataset contains a lot of columns, however many of them contain mostly empty 
+strings or NA's. Therefore, before applying algorithm, data needs to be prepared 
+and cleansed. It was decided to remove time based data and remove all columns that 
+have less data than the training dataset.
+```{r}
+d$X<-NULL;                    testData$X<-NULL;
+d$user_name<-NULL;            testData$user_name<-NULL
+d$raw_timestamp_part_1<-NULL; testData$raw_timestamp_part_1<-NULL
+d$raw_timestamp_part_2<-NULL; testData$raw_timestamp_part_2<-NULL
+d$cvtd_timestamp<-NULL;       testData$cvtd_timestamp<-NULL
+d$new_window<-NULL;           testData$new_window<-NULL
+d$num_window<-NULL;           testData$num_window<-NULL
+#Assign NA's to empty columns
+d[(d=="")]<-NA;               testData[(testData=="")]<-NA
+#Select only columns that have all the data in training dataset
+selectedFeatureNames<-names(d)[colSums(!is.na(d[,]))==19622]
+#Select only columns that have all the data in training dataset
+selectedTestFeatureNames<-names(testData)[colSums(!is.na(testData[,]))==20]
+#Take only features that make sense in both datasets
+selectedFeatureNames<-intersect(selectedFeatureNames, selectedTestFeatureNames)
+y<-d$classe
+d<-d[,selectedFeatureNames]
+testData<-testData[,selectedFeatureNames]
+```
+For the model validation purposes let's split the dataset into training and 
+cross-validation datasets. 
+```{r}
+set.seed(34521)
+inTrain<-createDataPartition(y, p=0.75, list=F)
+y_train<-y[inTrain]
+y_cv<-y[-inTrain]
+train<-d[inTrain,]
+cv<-d[-inTrain,]
+```
+There is still a large number of variables (52) to consider:
+```{r}
+length(names(train))
+```
+Therefore, PCA (as all the variables left are numeric) will be applied to reduce 
+number of data dimensions. It will help to save the memory as well.
+```{r}
+preproc<-preProcess(train,method="pca", thresh=0.95)
+preproc$numComp
+trainPC<-predict(preproc, train)
+cvPC<-predict(preproc, cv)
+#Save PCA function for later reuse
+save(preproc, file="preproc-rmd.rda")
+```
+This leaves us with 25 dimensions to model.
+Considering the non-linearity of the model, we will use bagging to create model.
+```{r}
+fit<-train(y_train~.,data=trainPC,method="treebag",prox=T, model=F)
+save(fit, file="model-rmd.rda")
+```
+Let's validate model accuracy using using cross-validation dataset.
+```{r}
+confusionMatrix(y_cv, predict(fit, cvPC))
+```
+With this model, we can predict type of the activity with 95% accuracy.
+We can now predict outcome on the test dataset:
+```{r}
+testPC<-predict(preproc,testData)
+result<-predict(fit,testPC)
+result
+```
+We need to save the prediction output into separate files for grading.
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(result)
+```
+Answers files are written to the working folder.

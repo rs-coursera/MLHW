@@ -6,3 +6,8 @@
 
 # R data files from past sessions
 .Rdata
+
+# Exclude saved and data source files
+*.rda
+*.txt
+*.csv
